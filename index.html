@@ -86,16 +86,16 @@
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
         // =========================================================================
-        // [중요] 1. Firebase 프로젝트 설정값 (새 프로젝트 생성 후 아래 값을 교체하세요!)
+        // [중요] 1. Firebase 프로젝트 설정값 (bathcare2612)
         // =========================================================================
         const firebaseConfig = {
-  apiKey: "AIzaSyAldkIW61gZ9AfrhNgIAtHbymWYtCnVEXw",
-  authDomain: "bathcare2612.firebaseapp.com",
-  projectId: "bathcare2612",
-  storageBucket: "bathcare2612.firebasestorage.app",
-  messagingSenderId: "333126672027",
-  appId: "1:333126672027:web:02c9909cf08c36f286303e"
-};
+            apiKey: "AIzaSyAldkIW61gZ9AfrhNgIAtHbymWYtCnVEXw",
+            authDomain: "bathcare2612.firebaseapp.com",
+            projectId: "bathcare2612",
+            storageBucket: "bathcare2612.firebasestorage.app",
+            messagingSenderId: "333126672027",
+            appId: "1:333126672027:web:02c9909cf08c36f286303e"
+        };
 
         // 데이터베이스 내 고유 폴더명 (기존 교육과 데이터가 섞이지 않도록 분리)
         const globalAppId = 'bathcare-2612-add'; 
@@ -267,7 +267,8 @@
                     }
                 });
 
-                await signInAnonymously(auth);
+                const userCredential = await signInAnonymously(auth);
+                state.user = userCredential.user;
 
             } catch (err) {
                 console.error("Firebase 초기화 에러:", err);
@@ -386,6 +387,12 @@
 
             setState({ isSubmitting: true });
             try {
+                // 인증 객체가 없으면 익명 로그인 재시도
+                if (!state.user && auth) {
+                    const cred = await signInAnonymously(auth);
+                    state.user = cred.user;
+                }
+
                 let formattedPhone = phoneRaw;
                 if (cleanPhone.length === 11) {
                     formattedPhone = cleanPhone.replace(/(\d{3})(\d{4})(\d{4})/, '$1-$2-$3');
@@ -401,13 +408,21 @@
                     date: state.selectedDate,
                     time: state.selectedTime,
                     createdAt: new Date().toISOString(),
-                    userId: state.user.uid
+                    userId: state.user?.uid || 'anonymous'
                 });
                 
                 setState({ view: 'success', isSubmitting: false });
             } catch (err) {
-                await showAlert("오류 코드: " + err.code + "\n사유: " + err.message, "신청 실패");
-                setState({ isSubmitting: false });
+                if (err.code === 'auth/configuration-not-found') {
+                    setState({ firebaseStatus: 'error', firebaseErrorType: 'auth', isSubmitting: false });
+                    window.showFirebaseGuide();
+                } else if (err.code === 'permission-denied') {
+                    setState({ firebaseStatus: 'error', firebaseErrorType: 'firestore', isSubmitting: false });
+                    window.showFirebaseGuide();
+                } else {
+                    await showAlert("오류 코드: " + (err.code || 'unknown') + "\n사유: " + err.message, "신청 실패");
+                    setState({ isSubmitting: false });
+                }
             }
         }
 
